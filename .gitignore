@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+
+# QGIS temporary and backup files
+*.qgs~
+*.qgz~
+*.qml~
+*.autosave
+
+# GeoPackage temporary files
+*.gpkg-wal
+*.gpkg-shm
+*.gpkg-journal
+
+# Local data and backups
+backup/
+backups/
+backup_*/
+photos/
+*.log
+
+# Editors and operating systems
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
