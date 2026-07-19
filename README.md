@@ -8,7 +8,7 @@ The plugin guides the user through the required attributes and measurements, cre
 - QGIS
 - QField on the field device
 - A QFieldCloud account for cloud synchronization, or a method for transferring the complete project folder locally
-- The EroMapper template GeoPackages from the `Template_geopackages` folder
+- The EroMapper template GeoPackages from the `Template_project` folder
 
 Optional:
 - The QFieldSync QGIS plugin and a QFieldCloud account for cloud synchronization, or a method for transferring the complete project folder locally
@@ -17,7 +17,7 @@ Optional:
 
 1. Create a new QGIS project and install **QFieldSync**.
 2. Create a QFieldCloud project and select a local project folder.
-3. Copy `Template_geopackages/erosion_data.gpkg` into that folder and add the required layers to QGIS. Keep the provided layer and field names unchanged.
+3. Copy `Template_project/erosion_data.gpkg` into that folder and add the required layers to QGIS. Keep the provided layer and field names unchanged.
 4. Upload the project with QFieldSync, or transfer the complete project folder locally to the device.
 5. Open the project in QField and disable the standard editing mode, since EroMapper uses its own digitizing tools.
 6. Download, install, and enable the EroMapper plugin from the GitHub Release (see https://docs.qfield.org/how-to/advanced-how-tos/plugins/).
