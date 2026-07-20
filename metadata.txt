@@ -3,5 +3,5 @@ name=EroMapper
 description=Tools for field-based soil erosion mapping
 author=Nils Barthel
 icon=icon.svg
-version=0.1.2
-homepage=https://github.com/barthelnils/test
+version=1.1.0
+homepage=https://github.com/barthelnils/EroMapper
