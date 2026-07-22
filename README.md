@@ -1,8 +1,8 @@
 # EroMapper
 
-EroMapper is a QField plugin for guided field mapping of soil erosion features by water. It provides dedicated tools for recording parcels and management information, linear and sheet erosion, sheet-to-linear erosion, copied linear erosion segments, sediment deposition, runoff points, overland water flow, notes, and photographs.
+EroMapper is a QField plugin for the guided field mapping of water-induced soil erosion. It provides dedicated, task-specific forms for recording management information, linear and sheet erosion, sheet-to-linear erosion, sediment deposition, runoff points, overland flow, notes, and photographs.
 
-The plugin guides the user through the required attributes and measurements, creates the corresponding geometries, and writes a creation timestamp automatically. The accompanying QGIS post-processing scripts transform the collected raw observations into analysis-ready processed layers.
+By guiding users through standardized, task-specific input steps, creating the required geometries, automatically selecting the appropriate layer, and storing entries directly in the corresponding GeoPackage layer, the plugin simplifies field data collection and reduces the risk of incomplete, inconsistent, or incorrectly assigned records. Users therefore do not need to switch manually between layers or use QField’s standard feature editor, as the complete mapping workflow is handled through the plugin interface. The accompanying QGIS post-processing scripts subsequently transform the collected raw observations into standardized, analysis-ready output layers.
 
 ## Requirements
 - QGIS
@@ -17,11 +17,10 @@ Optional:
 
 1. Create a new QGIS project and install **QFieldSync**.
 2. Create a QFieldCloud project and select a local project folder.
-3. Copy `Template_project/erosion_data.gpkg` into that folder and add the required layers to QGIS. Keep the provided layer and field names unchanged.
+3. Copy `erosion_data.gpkg` (can be found in `Template_project`) into that folder and add the required layers to QGIS. Keep the provided layer and field names unchanged.
 4. Upload the project with QFieldSync, or transfer the complete project folder locally to the device.
 5. Open the project in QField and disable the standard editing mode, since EroMapper uses its own digitizing tools.
 6. Download, install, and enable the EroMapper plugin from the GitHub Release (see https://docs.qfield.org/how-to/advanced-how-tos/plugins/).
-
 
 ## Usage
 
@@ -50,7 +49,6 @@ After the project and plugin are loaded, EroMapper adds a toolbar with guided ma
 5. Repeat for the remaining erosion features.
 6. Synchronize the project back to QFieldCloud or transfer the modified project folder back to the desktop.
 
-The `Date` field is filled automatically when a feature is created.
 
 ### Post-processing
 
