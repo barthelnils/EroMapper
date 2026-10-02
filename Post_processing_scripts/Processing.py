@@ -54,6 +54,7 @@ import os
 #
 # BULK_DENSITY_GENERAL is used whenever no form-specific override is provided.
 # Set any override below to a positive numeric value to use a different bulk density for that erosion/deposition form. Leave it as None to use the general value
+
 BULK_DENSITY_GENERAL = 1.45
 BULK_DENSITY_LINEAR_EROSION = None
 BULK_DENSITY_SHEET_TO_LINEAR_EROSION = None
@@ -87,6 +88,7 @@ RAW_NOTE_POINTS = "Note_Point"
 RAW_NOTE_AREAS = "Note_Area"
 RAW_MANAGEMENT = "Management"
 RAW_SMALL_DEPOSITION = "Small_Deposition"
+RAW_PARCELS = "Parcels"
 
 # PROCESSED
 PROCESSED_PARCELS = "Parcels"
@@ -889,6 +891,165 @@ class SysContext:
         return feature, erosion_system_id
 
 
+# =============================================================================
+# PARCEL SYNCHRONISATION
+# =============================================================================
+def sync_missing_parcels():
+    """
+    Copy parcels that exist in the RAW GeoPackage but are missing from the
+    processed GeoPackage.
+
+    Parcels are matched by ABP_ID. Existing processed parcels are left
+    unchanged. New parcel geometries are transformed to the CRS of the
+    processed Parcels layer.
+    """
+
+    raw_parcels = load_layer(
+        RAW_GPKG,
+        RAW_PARCELS,
+    )
+
+    processed_parcels = load_layer(
+        PROC_GPKG,
+        PROCESSED_PARCELS,
+    )
+
+    # ABP_ID is required in both parcel layers.
+    if "ABP_ID" not in field_names(raw_parcels):
+        raise RuntimeError(
+            "RAW Parcels layer is missing required field: ABP_ID"
+        )
+
+    if "ABP_ID" not in field_names(processed_parcels):
+        raise RuntimeError(
+            "Processed Parcels layer is missing required field: ABP_ID"
+        )
+
+    # Transform RAW parcel geometries to the processed parcel CRS.
+    transform = QgsCoordinateTransform(
+        raw_parcels.crs(),
+        processed_parcels.crs(),
+        QgsProject.instance(),
+    )
+
+    # Existing parcel IDs in the processed database.
+    existing_abp_ids = set()
+
+    for feature in processed_parcels.getFeatures():
+        abp_id = safe_int(feature["ABP_ID"])
+
+        if abp_id is not None:
+            existing_abp_ids.add(int(abp_id))
+
+    # Copy only attributes that exist in both parcel layers.
+    raw_field_names = set(field_names(raw_parcels))
+    processed_field_names = set(field_names(processed_parcels))
+
+    common_fields = (
+        raw_field_names
+        & processed_field_names
+    )
+
+    # Do not copy provider-generated identifier fields.
+    excluded_fields = {
+        "fid",
+        "FID",
+        "OBJECTID",
+        "objectid",
+    }
+
+    common_fields -= excluded_fields
+
+    new_features = []
+    skipped_without_abp_id = 0
+    skipped_without_geometry = 0
+
+    for raw_feature in raw_parcels.getFeatures():
+
+        abp_id = safe_int(raw_feature["ABP_ID"])
+
+        # Parcels must have an ABP_ID.
+        if abp_id is None:
+            skipped_without_abp_id += 1
+            continue
+
+        # Do not overwrite existing processed parcels.
+        if int(abp_id) in existing_abp_ids:
+            continue
+
+        if not raw_feature.hasGeometry():
+            skipped_without_geometry += 1
+            continue
+
+        geometry = QgsGeometry(
+            raw_feature.geometry()
+        )
+
+        geometry.transform(transform)
+
+        new_feature = QgsFeature(
+            processed_parcels.fields()
+        )
+
+        new_feature.setGeometry(geometry)
+
+        # Copy matching attributes.
+        for field_name in common_fields:
+            new_feature[field_name] = raw_feature[field_name]
+
+        new_features.append(new_feature)
+
+        # Prevent duplicate ABP_IDs within the same run.
+        existing_abp_ids.add(int(abp_id))
+
+    # Nothing new to add.
+    if not new_features:
+        print("PARCEL SYNC DONE ✅")
+        print("Added Parcels: 0")
+
+        if skipped_without_abp_id:
+            print(
+                f"[WARN] Parcels without ABP_ID skipped: "
+                f"{skipped_without_abp_id}"
+            )
+
+        if skipped_without_geometry:
+            print(
+                f"[WARN] Parcels without geometry skipped: "
+                f"{skipped_without_geometry}"
+            )
+
+        return
+
+    ensure_edit(processed_parcels)
+
+    ok, _ = processed_parcels.dataProvider().addFeatures(
+        new_features
+    )
+
+    if not ok:
+        processed_parcels.rollBack()
+        raise RuntimeError(
+            "Could not copy RAW parcels to processed Parcels."
+        )
+
+    commit(processed_parcels)
+
+    print("PARCEL SYNC DONE ✅")
+    print(f"Added Parcels: {len(new_features)}")
+
+    if skipped_without_abp_id:
+        print(
+            f"[WARN] Parcels without ABP_ID skipped: "
+            f"{skipped_without_abp_id}"
+        )
+
+    if skipped_without_geometry:
+        print(
+            f"[WARN] Parcels without geometry skipped: "
+            f"{skipped_without_geometry}"
+        )
+        
 # =============================================================================
 # ABP INDEX + LOOKUP (max Affected_Wheel_Tracks)
 # =============================================================================
@@ -5161,6 +5322,8 @@ def run_management():
 # RUN ALL
 # =============================================================================
 def run():
+    sync_missing_parcels()
+    
     idctx = build_global_id_context()
 
     system_layer = try_load_layer(PROC_GPKG, PROCESSED_EROSION_SYSTEMS) if WRITE_SYS_RECORDS else None
