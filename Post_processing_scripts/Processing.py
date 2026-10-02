@@ -45,13 +45,33 @@ from qgis.core import (
 from PyQt5.QtCore import QVariant
 from collections import defaultdict
 import re
+import os
 
+# ----------------------------
+# CONSTANTS
+# ----------------------------
+# Bulk density [t m-3]
+#
+# BULK_DENSITY_GENERAL is used whenever no form-specific override is provided.
+# Set any override below to a positive numeric value to use a different bulk density for that erosion/deposition form. Leave it as None to use the general value
+BULK_DENSITY_GENERAL = 1.45
+BULK_DENSITY_LINEAR_EROSION = None
+BULK_DENSITY_SHEET_TO_LINEAR_EROSION = None
+BULK_DENSITY_SHEET_EROSION = None
+BULK_DENSITY_SHEET_EROSION_WHEEL_TRACKS = None
+BULK_DENSITY_SHEET_EROSION_SMALL_PARALLEL_RILLS = None
+BULK_DENSITY_DEPOSITION = None
+
+BUFFER_M = 8.0
 
 # ----------------------------
 # PATHS / LAYER NAMES
 # ----------------------------
-RAW_GPKG = r"C:\Users\barthe-n\QField\cloud\test_local\erosion_data.gpkg"
-PROC_GPKG = r"C:\Users\barthe-n\QField\cloud\test_local\erosion_data_processed.gpkg"
+# GeoPackages in the current QGIS project directory
+PROJECT_DIR = QgsProject.instance().homePath()
+
+RAW_GPKG = os.path.join(PROJECT_DIR, "erosion_data.gpkg")
+PROC_GPKG = os.path.join(PROJECT_DIR, "erosion_data_processed.gpkg")
 
 # RAW
 RAW_LINEAR_POINTS = "Linear_Erosion_Measurement_Points"
@@ -60,7 +80,7 @@ RAW_SHEET_TO_LINEAR_AREAS = "Sheet_To_Linear_Area"
 RAW_SHEET_EROSION_AREAS = "Sheet_Erosion"
 RAW_LARGE_DEPOSITION_POINTS = "Large_Deposition_Measurement_Points"
 RAW_LARGE_DEPOSITION_AREAS = "Large_Deposition_Area"
-RAW_COPY_LINEAR_POINTS = "Copy_linear"
+RAW_COPY_LINEAR_POINTS = "Copy_Linear"
 RAW_RUNOFF = "Runoff"
 RAW_OVERLAND_WATER_FLOW = "Overland_water_flow"
 RAW_NOTE_POINTS = "Note_Point"
@@ -85,13 +105,6 @@ PROCESSED_RUNOFF = "Runoff_Processed"
 PROCESSED_OVERLAND_WATER_FLOW = "Overland_water_flow_Processed"
 PROCESSED_NOTES = "Notes_Processed"
 PROCESSED_NOTES_AREA = "Notes_Area_Processed"
-
-
-# ----------------------------
-# CONSTANTS
-# ----------------------------
-DENSITY_T_PER_M3 = 1.45
-BUFFER_M = 8.0
 
 # Management observations without an underlying parcel are preserved as
 # attribute-only records in Parcels using this default ABP_ID.
@@ -133,17 +146,19 @@ LINK_EROSION_SYSTEM_ID = False
 #     Erosion_Form_1 = "Linear erosion"
 #     Erosion_Form_2 = linked RAW linear erosion type
 
-BUF_SEGMENTS = 16
-BUF_CAP = QgsGeometry.CapFlat
-BUF_JOIN = QgsGeometry.JoinStyleRound
-BUF_MITER = 2.0
+# Settings used in linear processing and the related buffering (representing affected area)
+BUF_SEGMENTS = 16              # Buffer smoothness
+BUF_CAP = QgsGeometry.CapFlat  # Flat buffer ends
+BUF_JOIN = QgsGeometry.JoinStyleRound  # Rounded buffer corners
+BUF_MITER = 2.0                # Miter limit for buffer joins
 
-MAX_SEGMENT_M_WARN = 500.0
+# Quality Control
+MAX_SEGMENT_M_WARN = 100.0     # Warn for unusually long segments [m]
 
-# Idempotency signature rounding
-CENTROID_ROUND_M = 0.01
-AREA_ROUND = 3
-LEN_ROUND = 3
+# Idempotency signature rounding (used to check for duplicates)
+CENTROID_ROUND_M = 0.01        # Centroid tolerance [m]
+AREA_ROUND = 3                 # Area rounding for duplicate checks
+LEN_ROUND = 3                  # Length rounding for duplicate checks
 
 
 # =============================================================================
@@ -217,6 +232,36 @@ def resolve_first_field_name(layer, candidate_names):
         if actual_name is not None:
             return actual_name
     return None
+
+
+def resolve_bulk_density(form_specific_density=None):
+    """Return a positive form-specific bulk density or the general default.
+
+    Parameters
+    ----------
+    form_specific_density : float or None
+        Optional bulk-density override in t m-3. If None,
+        BULK_DENSITY_GENERAL is used.
+    """
+    value = (
+        BULK_DENSITY_GENERAL
+        if form_specific_density is None
+        else form_specific_density
+    )
+
+    try:
+        value = float(value)
+    except (TypeError, ValueError):
+        raise ValueError(
+            f"Bulk density must be numeric, got {value!r}."
+        )
+
+    if value <= 0:
+        raise ValueError(
+            f"Bulk density must be greater than zero, got {value}."
+        )
+
+    return value
 
 
 # =============================================================================
@@ -1738,7 +1783,7 @@ def run_linear(idctx, sysctx=None):
 
             base_volume_sum = sum(base_segment_volumes)
             total_eroded_volume = base_volume_sum * float(wheel_track_count)
-            total_eroded_mass = total_eroded_volume * DENSITY_T_PER_M3
+            total_eroded_mass = total_eroded_volume * resolve_bulk_density(BULK_DENSITY_LINEAR_EROSION)
 
             buffer_geometry = line_geometry.buffer(BUFFER_M, BUF_SEGMENTS, BUF_CAP, BUF_JOIN, BUF_MITER)
             try:
@@ -2304,7 +2349,7 @@ def run_sheet_to_linear(idctx, sysctx=None):
                 new_sheet_to_linear_points.append(point_feature)
 
             base_volume = sum(segment_volumes)
-            base_mass = base_volume * DENSITY_T_PER_M3
+            base_mass = base_volume * resolve_bulk_density(BULK_DENSITY_SHEET_TO_LINEAR_EROSION)
             line_geometry = QgsGeometry.fromPolylineXY(points_xy)
 
             top_width_values = [v for v in top_widths if v is not None]
@@ -2558,13 +2603,17 @@ def calculate_sheet_erosion_metrics(area_m2, erosion_form_2, affected_wheel_trac
     if erosion_form_2 == "Sheet erosion":
         erosion_rate = 0.75
         eroded_mass = round(erosion_rate * area_ha, 3)
-        eroded_volume = round(eroded_mass / DENSITY_T_PER_M3, 3)
+        bulk_density = resolve_bulk_density(BULK_DENSITY_SHEET_EROSION)
+        eroded_volume = round(eroded_mass / bulk_density, 3)
         return erosion_rate, eroded_mass, eroded_volume
 
     if erosion_form_2 == "Sheet erosion in small parallel rills":
         erosion_rate = 1.7
         eroded_mass = round(erosion_rate * area_ha, 3)
-        eroded_volume = round(eroded_mass / DENSITY_T_PER_M3, 3)
+        bulk_density = resolve_bulk_density(
+            BULK_DENSITY_SHEET_EROSION_SMALL_PARALLEL_RILLS
+        )
+        eroded_volume = round(eroded_mass / bulk_density, 3)
         return erosion_rate, eroded_mass, eroded_volume
 
     if erosion_form_2 in (
@@ -2578,7 +2627,10 @@ def calculate_sheet_erosion_metrics(area_m2, erosion_form_2, affected_wheel_trac
         erosion_rate = round(0.75 * affected_tracks, 3)
         raw_mass = 0.75 * affected_tracks * area_ha
         eroded_mass = 0.001 if raw_mass < 0.001 else round(raw_mass, 3)
-        eroded_volume = round(eroded_mass / DENSITY_T_PER_M3, 3)
+        bulk_density = resolve_bulk_density(
+            BULK_DENSITY_SHEET_EROSION_WHEEL_TRACKS
+        )
+        eroded_volume = round(eroded_mass / bulk_density, 3)
         return erosion_rate, eroded_mass, eroded_volume
 
     return None, None, None
@@ -3412,7 +3464,7 @@ def run_large_deposition(idctx):
             area_m2 * (mean_deposition_depth_cm / 100.0)
         )
         deposition_mass_t = (
-            deposition_volume_m3 * DENSITY_T_PER_M3
+            deposition_volume_m3 * resolve_bulk_density(BULK_DENSITY_DEPOSITION)
         )
         deposition_depth_value = (
             deposition_mass_t / (area_m2 / 10000.0)
@@ -3940,7 +3992,7 @@ def run_copy_linear(idctx, sysctx=None):
             wheel_track_count = safe_int(reference_line["Number_of_Wheel_Tracks"]) or 1
 
             eroded_volume = (cross_section / 10000.0) * float(copy_linear_length_m) * float(wheel_track_count)
-            eroded_mass = eroded_volume * DENSITY_T_PER_M3
+            eroded_mass = eroded_volume * resolve_bulk_density(BULK_DENSITY_LINEAR_EROSION)
 
             buffer_geometry = copy_linear_geometry.buffer(BUFFER_M, BUF_SEGMENTS, BUF_CAP, BUF_JOIN, BUF_MITER)
             try:
@@ -5075,7 +5127,7 @@ def run_management():
                 parcels.rollBack()
 
                 raise RuntimeError(
-                    "Management update failed — see the provider "
+                    "Management update failed â€” see the provider "
                     "error above."
                 )
 
