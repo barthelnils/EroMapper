@@ -1,10 +1,22 @@
-from qgis.core import QgsVectorLayer
+from qgis.core import QgsVectorLayer, QgsProject
 from datetime import datetime
+from pathlib import Path
 
 # -----------------------------
 # CONFIG
 # -----------------------------
-PROC_GPKG = r"C:\Users\barthe-n\QField\cloud\test_local\erosion_data_processed.gpkg"
+PROJECT_DIR = QgsProject.instance().homePath()
+
+if not PROJECT_DIR:
+    raise RuntimeError(
+        "No QGIS project directory found. "
+        "Save or open the EroMapper project first."
+    )
+
+PROC_GPKG = str(
+    Path(PROJECT_DIR) / "erosion_data_processed.gpkg"
+)
+
 CUTOFF_DATE_STR = "25.02.2026"   # delete EVERYTHING on or after this date
 
 # Processed output layers that contain the Date field

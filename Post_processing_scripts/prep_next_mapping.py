@@ -29,27 +29,28 @@ from datetime import datetime
 from pathlib import Path
 import shutil
 
-from qgis.core import QgsVectorLayer
+from qgis.core import QgsVectorLayer, QgsProject
 
 
 # -----------------------------------------------------------------------------
 # PATHS
 # -----------------------------------------------------------------------------
-RAW_GPKG = Path(
-    r"C:\Users\barthe-n\QField\cloud\test_local\erosion_data.gpkg"
-)
-PROCESSED_GPKG = Path(
-    r"C:\Users\barthe-n\QField\cloud\test_local"
-    r"\erosion_data_processed.gpkg"
-)
+project_home = QgsProject.instance().homePath()
 
-BACKUP_DIR_RAW = Path(
-    r"C:\Users\barthe-n\QField\cloud\backup_mapped"
-)
-BACKUP_DIR_PROCESSED = Path(
-    r"C:\Users\barthe-n\QField\cloud\backup_processed"
-)
+if not project_home:
+    raise RuntimeError(
+        "No QGIS project directory found. "
+        "Save or open the EroMapper project first."
+    )
 
+PROJECT_DIR = Path(project_home)
+
+RAW_GPKG = PROJECT_DIR / "erosion_data.gpkg"
+PROCESSED_GPKG = PROJECT_DIR / "erosion_data_processed.gpkg"
+
+# Backup folders are created next to the QGIS project folder.
+BACKUP_DIR_RAW = PROJECT_DIR.parent / "backup_mapped"
+BACKUP_DIR_PROCESSED = PROJECT_DIR.parent / "backup_processed"
 
 # -----------------------------------------------------------------------------
 # SWITCHES
